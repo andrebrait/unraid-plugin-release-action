@@ -211,7 +211,7 @@ runs:
       if: steps.check_existing_package.outputs.skip_build != 'true' && inputs.build_package == 'true'
 
     - name: Template plugin file
-      uses: andrebrait/jinja2-action@6c9b65aedbcb3a47bc14d740b00be3ad5a20129b # fork of dkaser/jinja2-action v1, image built from source
+      uses: andrebrait/jinja2-action@fac127f2881c7ed7904df72e5937a375b255ff9c # fork of dkaser/jinja2-action v1, image from ghcr.io/andrebrait/jinja2-action
       with:
         template: main/plugin/plugin.j2
         output_file: main/plugin/${{ steps.globals.outputs.name }}.plg
@@ -226,7 +226,7 @@ runs:
       if: github.event.release.prerelease == false
 
     - name: Template preview plugin file
-      uses: andrebrait/jinja2-action@6c9b65aedbcb3a47bc14d740b00be3ad5a20129b # fork of dkaser/jinja2-action v1, image built from source
+      uses: andrebrait/jinja2-action@fac127f2881c7ed7904df72e5937a375b255ff9c # fork of dkaser/jinja2-action v1, image from ghcr.io/andrebrait/jinja2-action
       with:
         template: main/plugin/plugin.j2
         output_file: main/plugin/${{ steps.globals.outputs.name }}-preview.plg
