@@ -116,10 +116,51 @@ runs:
 
     - name: Set global variables
       id: globals
+      env:
+        PLUGIN_VERSION: ${{ inputs.plugin_version }}
+        BUILD_PACKAGE: ${{ inputs.build_package }}
+        PACKAGE_NAME: ${{ fromJson(env.PLUGIN_JSON).package_name }}
+        NAME: ${{ fromJson(env.PLUGIN_JSON).name }}
       run: |
-        echo "package_file=${{ fromJson(env.PLUGIN_JSON).package_name }}-${{ inputs.plugin_version }}-noarch-1.txz" >> $GITHUB_OUTPUT
-        echo "package_name=${{ fromJson(env.PLUGIN_JSON).package_name }}" >> $GITHUB_OUTPUT
-        echo "name=${{ fromJson(env.PLUGIN_JSON).name }}" >> $GITHUB_OUTPUT
+        set -euo pipefail
+        package_version="${PLUGIN_VERSION//-/.}"
+        if [[ "$BUILD_PACKAGE" == "true" && "$PLUGIN_VERSION" == *-* ]]; then
+          if ! grep -qE 'PLUGIN_PACKAGE_(VERSION|FILE)' "${{ github.workspace }}/main/plugin/plugin.j2"; then
+            echo "::error::plugin_version '$PLUGIN_VERSION' contains '-', which breaks Slackware upgradepkg package-name matching. Use '.' instead (e.g. '$package_version') or reference env['PLUGIN_PACKAGE_VERSION'] / env['PLUGIN_PACKAGE_FILE'] in plugin/plugin.j2."
+            exit 1
+          fi
+        fi
+        package_file="${PACKAGE_NAME}-${package_version}-noarch-1.txz"
+        echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+        echo "package_file=$package_file" >> "$GITHUB_OUTPUT"
+        echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+        echo "name=$NAME" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: Validate Unraid pre-release version ordering
+      if: github.event.release.prerelease == true
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PLUGIN_VERSION: ${{ inputs.plugin_version }}
+        LC_ALL: C
+      run: |
+        set -euo pipefail
+        latest_stable=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 1 --json name,tagName --jq '.[0] | (.name // .tagName // "")')
+        if [[ -z "$latest_stable" ]]; then
+          exit 0
+        fi
+        if [[ ! "$PLUGIN_VERSION" > "$latest_stable" ]]; then
+          echo "::error::Pre-release '$PLUGIN_VERSION' does not sort after latest stable '$latest_stable' under Unraid's strcmp()."
+          exit 1
+        fi
+        base="$PLUGIN_VERSION"
+        if [[ "$PLUGIN_VERSION" =~ ^([0-9]+(\.[0-9]+)+)([-._]?[A-Za-z].*)$ ]]; then
+          base="${BASH_REMATCH[1]}"
+        fi
+        if [[ "$base" != "$PLUGIN_VERSION" && "$base" > "$latest_stable" ]]; then
+          echo "::error::Pre-release '$PLUGIN_VERSION' sorts AFTER '$base' under Unraid's strcmp(), which would block upgrading to '$base'. Base pre-releases on the current stable version instead (e.g. '${latest_stable}.rc01' or '${latest_stable}-rc01')."
+          exit 1
+        fi
       shell: bash
 
     - name: Get previous releases
@@ -218,6 +259,8 @@ runs:
         data_file: main/plugin/plugin.json
       env:
         PLUGIN_VERSION: ${{ inputs.plugin_version }}
+        PLUGIN_PACKAGE_VERSION: ${{ steps.globals.outputs.package_version }}
+        PLUGIN_PACKAGE_FILE: ${{ steps.globals.outputs.package_file }}
         PLUGIN_CHECKSUM: ${{ steps.check_existing_package.outputs.checksum || steps.build_files.outputs.checksum }}
         PLUGIN_CHANGELOG: ${{ steps.get_previous_releases.outputs.formatted_releases }}
         PLUGIN_RELEASE: ""
@@ -233,6 +276,8 @@ runs:
         data_file: main/plugin/plugin.json
       env:
         PLUGIN_VERSION: ${{ inputs.plugin_version }}
+        PLUGIN_PACKAGE_VERSION: ${{ steps.globals.outputs.package_version }}
+        PLUGIN_PACKAGE_FILE: ${{ steps.globals.outputs.package_file }}
         PLUGIN_CHECKSUM: ${{ steps.check_existing_package.outputs.checksum || steps.build_files.outputs.checksum }}
         PLUGIN_CHANGELOG: ${{ steps.get_previous_releases.outputs.formatted_releases }}
         PLUGIN_RELEASE: "-preview"
